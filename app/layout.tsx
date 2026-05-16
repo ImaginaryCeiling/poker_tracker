@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Analytics } from "@vercel/analytics/react";
 
 export const metadata: Metadata = {
   title: "Poker Tracker",
@@ -36,6 +37,7 @@ export default function RootLayout({
           </nav>
         </header>
         <main className="max-w-5xl mx-auto px-4 py-8">{children}</main>
+        <Analytics />
       </body>
     </html>
   );
