@@ -1,41 +1,59 @@
-import Database from "better-sqlite3";
-import path from "node:path";
+import { neon, neonConfig } from "@neondatabase/serverless";
 
-let _db: Database.Database | null = null;
+neonConfig.fetchConnectionCache = true;
 
-export function db(): Database.Database {
-  if (_db) return _db;
-  const file = process.env.POKER_DB_PATH || path.join(process.cwd(), "poker.db");
-  const d = new Database(file);
-  d.pragma("journal_mode = WAL");
-  d.pragma("foreign_keys = ON");
-  d.exec(`
+function getClient() {
+  const url = process.env.POSTGRES_URL ?? process.env.DATABASE_URL;
+  if (!url) throw new Error("POSTGRES_URL or DATABASE_URL env var is required");
+  return neon(url);
+}
+
+export async function query<T = Record<string, unknown>>(
+  strings: TemplateStringsArray,
+  ...values: unknown[]
+): Promise<T[]> {
+  const sql = getClient();
+  const rows = await sql(strings, ...values);
+  return rows as T[];
+}
+
+export async function queryOne<T = Record<string, unknown>>(
+  strings: TemplateStringsArray,
+  ...values: unknown[]
+): Promise<T | undefined> {
+  const rows = await query<T>(strings, ...values);
+  return rows[0];
+}
+
+export async function ensureSchema() {
+  const sql = getClient();
+  await sql`
     CREATE TABLE IF NOT EXISTS players (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
     CREATE TABLE IF NOT EXISTS sessions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT,
-      played_at TEXT NOT NULL DEFAULT (datetime('now')),
-      buy_in REAL NOT NULL,
+      played_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      buy_in DOUBLE PRECISION NOT NULL,
       status TEXT NOT NULL DEFAULT 'open',
       notes TEXT
-    );
-
+    )
+  `;
+  await sql`
     CREATE TABLE IF NOT EXISTS session_entries (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
       player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
       buy_ins INTEGER NOT NULL DEFAULT 1,
-      cashout REAL NOT NULL DEFAULT 0,
+      cashout DOUBLE PRECISION NOT NULL DEFAULT 0,
       UNIQUE(session_id, player_id)
-    );
-  `);
-  _db = d;
-  return d;
+    )
+  `;
 }
 
 export type Player = { id: number; name: string; created_at: string };

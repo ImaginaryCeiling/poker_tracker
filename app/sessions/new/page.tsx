@@ -1,13 +1,13 @@
 import Link from "next/link";
-import { db, type Player } from "@/lib/db";
+import { query, type Player } from "@/lib/db";
 import { createSession } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
-export default function NewSessionPage() {
-  const players = db()
-    .prepare("SELECT * FROM players ORDER BY name COLLATE NOCASE")
-    .all() as Player[];
+export default async function NewSessionPage() {
+  const players = await query<Player>`
+    SELECT * FROM players ORDER BY LOWER(name)
+  `;
 
   if (players.length === 0) {
     return (

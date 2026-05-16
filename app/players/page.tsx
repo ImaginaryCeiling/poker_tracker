@@ -1,12 +1,12 @@
-import { db, type Player } from "@/lib/db";
+import { query, type Player } from "@/lib/db";
 import { createPlayer, deletePlayer } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
-export default function PlayersPage() {
-  const players = db()
-    .prepare("SELECT * FROM players ORDER BY name COLLATE NOCASE")
-    .all() as Player[];
+export default async function PlayersPage() {
+  const players = await query<Player>`
+    SELECT * FROM players ORDER BY LOWER(name)
+  `;
 
   return (
     <div className="space-y-8">
