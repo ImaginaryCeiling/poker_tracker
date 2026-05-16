@@ -116,8 +116,12 @@ export default async function SessionDetail({
         </div>
       </div>
 
-      <form action={updateSessionEntries} className="space-y-4">
-        <input type="hidden" name="session_id" value={session.id} />
+      {/* The save form lives outside the table so per-row Remove forms aren't nested inside it. */}
+      <form id="save-entries" action={updateSessionEntries}>
+        <input type="hidden" name="session_id" value={session.id} form="save-entries" />
+      </form>
+
+      <div className="space-y-4">
         <div className="rounded-lg border border-neutral-800 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-neutral-900 text-neutral-400">
@@ -137,6 +141,7 @@ export default async function SessionDetail({
                     <td className="px-3 py-2 font-medium">{e.player_name}</td>
                     <td className="px-3 py-2">
                       <input
+                        form="save-entries"
                         name={`buy_ins_${e.id}`}
                         type="number"
                         min="0"
@@ -147,6 +152,7 @@ export default async function SessionDetail({
                     </td>
                     <td className="px-3 py-2">
                       <input
+                        form="save-entries"
                         name={`cashout_${e.id}`}
                         type="number"
                         min="0"
@@ -200,12 +206,13 @@ export default async function SessionDetail({
           </p>
           <button
             type="submit"
+            form="save-entries"
             className="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium px-4 py-2 rounded"
           >
             Save
           </button>
         </div>
-      </form>
+      </div>
 
       {availablePlayers.length > 0 && (
         <form action={addPlayerToSession} className="flex gap-2 items-end">
