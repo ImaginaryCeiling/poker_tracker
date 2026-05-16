@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { db, type Player, type Session } from "@/lib/db";
+import { query, queryOne, type Player, type Session } from "@/lib/db";
 import { settle, type Balance } from "@/lib/settle";
 import { money, signedMoney, formatDate } from "@/lib/format";
 import {
@@ -28,36 +28,33 @@ export default async function SessionDetail({
 }) {
   const { id } = await params;
   const sessionId = Number(id);
-  const d = db();
 
-  const session = d
-    .prepare("SELECT * FROM sessions WHERE id = ?")
-    .get(sessionId) as Session | undefined;
+  const session = await queryOne<Session>`
+    SELECT * FROM sessions WHERE id = ${sessionId}
+  `;
   if (!session) notFound();
 
-  const entries = d
-    .prepare(
-      `SELECT se.id, se.player_id, p.name AS player_name, se.buy_ins, se.cashout
-         FROM session_entries se
-         JOIN players p ON p.id = se.player_id
-        WHERE se.session_id = ?
-        ORDER BY p.name COLLATE NOCASE`
-    )
-    .all(sessionId) as EntryRow[];
+  const entries = await query<EntryRow>`
+    SELECT se.id, se.player_id, p.name AS player_name, se.buy_ins, se.cashout
+      FROM session_entries se
+      JOIN players p ON p.id = se.player_id
+     WHERE se.session_id = ${sessionId}
+     ORDER BY LOWER(p.name)
+  `;
 
-  const allPlayers = d.prepare("SELECT * FROM players ORDER BY name").all() as Player[];
+  const allPlayers = await query<Player>`SELECT * FROM players ORDER BY LOWER(name)`;
   const inSet = new Set(entries.map((e) => e.player_id));
   const availablePlayers = allPlayers.filter((p) => !inSet.has(p.id));
 
-  const totalBuyIns = entries.reduce((s, e) => s + e.buy_ins, 0);
-  const pot = totalBuyIns * session.buy_in;
-  const totalCashout = entries.reduce((s, e) => s + e.cashout, 0);
+  const totalBuyIns = entries.reduce((s, e) => s + Number(e.buy_ins), 0);
+  const pot = totalBuyIns * Number(session.buy_in);
+  const totalCashout = entries.reduce((s, e) => s + Number(e.cashout), 0);
   const drift = totalCashout - pot;
 
   const balances: Balance[] = entries.map((e) => ({
     playerId: e.player_id,
     name: e.player_name,
-    net: e.cashout - e.buy_ins * session.buy_in,
+    net: Number(e.cashout) - Number(e.buy_ins) * Number(session.buy_in),
   }));
   const transfers = settle(balances);
   const isOpen = session.status === "open";
@@ -82,7 +79,7 @@ export default async function SessionDetail({
             )}
           </h1>
           <p className="text-sm text-neutral-400 mt-1">
-            {formatDate(session.played_at)} · buy-in {money(session.buy_in)}
+            {formatDate(session.played_at)} · buy-in {money(Number(session.buy_in))}
           </p>
         </div>
         <div className="flex gap-2">
@@ -116,8 +113,11 @@ export default async function SessionDetail({
         </div>
       </div>
 
-      <form action={updateSessionEntries} className="space-y-4">
-        <input type="hidden" name="session_id" value={session.id} />
+      <form id="save-entries" action={updateSessionEntries}>
+        <input type="hidden" name="session_id" value={session.id} form="save-entries" />
+      </form>
+
+      <div className="space-y-4">
         <div className="rounded-lg border border-neutral-800 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-neutral-900 text-neutral-400">
@@ -131,12 +131,13 @@ export default async function SessionDetail({
             </thead>
             <tbody>
               {entries.map((e) => {
-                const net = e.cashout - e.buy_ins * session.buy_in;
+                const net = Number(e.cashout) - Number(e.buy_ins) * Number(session.buy_in);
                 return (
                   <tr key={e.id} className="border-t border-neutral-800">
                     <td className="px-3 py-2 font-medium">{e.player_name}</td>
                     <td className="px-3 py-2">
                       <input
+                        form="save-entries"
                         name={`buy_ins_${e.id}`}
                         type="number"
                         min="0"
@@ -147,6 +148,7 @@ export default async function SessionDetail({
                     </td>
                     <td className="px-3 py-2">
                       <input
+                        form="save-entries"
                         name={`cashout_${e.id}`}
                         type="number"
                         min="0"
@@ -196,16 +198,17 @@ export default async function SessionDetail({
         </div>
         <div className="flex items-center justify-between">
           <p className="text-xs text-neutral-500">
-            Pot: {money(pot)} ({totalBuyIns} × {money(session.buy_in)}). If totals don't balance, check the cashouts.
+            Pot: {money(pot)} ({totalBuyIns} × {money(Number(session.buy_in))}). If totals don't balance, check the cashouts.
           </p>
           <button
             type="submit"
+            form="save-entries"
             className="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium px-4 py-2 rounded"
           >
             Save
           </button>
         </div>
-      </form>
+      </div>
 
       {availablePlayers.length > 0 && (
         <form action={addPlayerToSession} className="flex gap-2 items-end">

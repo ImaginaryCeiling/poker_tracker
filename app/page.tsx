@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { db } from "@/lib/db";
+import { query, ensureSchema } from "@/lib/db";
 import { settle, type Balance } from "@/lib/settle";
 import { signedMoney, money, formatDate } from "@/lib/format";
 
@@ -23,40 +23,36 @@ type RecentSession = {
   player_count: number;
 };
 
-export default function Dashboard() {
-  const d = db();
+export default async function Dashboard() {
+  await ensureSchema();
 
-  const lifetime = d
-    .prepare(
-      `SELECT p.id, p.name,
-              COUNT(DISTINCT se.session_id) AS sessions_played,
-              COALESCE(SUM(se.buy_ins * s.buy_in), 0) AS total_buyin,
-              COALESCE(SUM(se.cashout), 0) AS total_cashout,
-              COALESCE(SUM(se.cashout - se.buy_ins * s.buy_in), 0) AS net
-         FROM players p
-         LEFT JOIN session_entries se ON se.player_id = p.id
-         LEFT JOIN sessions s ON s.id = se.session_id AND s.status = 'closed'
-        GROUP BY p.id, p.name
-        ORDER BY net DESC`
-    )
-    .all() as LifetimeRow[];
+  const lifetime = await query<LifetimeRow>`
+    SELECT p.id, p.name,
+           COUNT(DISTINCT se.session_id)::int AS sessions_played,
+           COALESCE(SUM(se.buy_ins * s.buy_in), 0) AS total_buyin,
+           COALESCE(SUM(se.cashout), 0) AS total_cashout,
+           COALESCE(SUM(se.cashout - se.buy_ins * s.buy_in), 0) AS net
+      FROM players p
+      LEFT JOIN session_entries se ON se.player_id = p.id
+      LEFT JOIN sessions s ON s.id = se.session_id AND s.status = 'closed'
+     GROUP BY p.id, p.name
+     ORDER BY net DESC
+  `;
 
-  const recent = d
-    .prepare(
-      `SELECT s.id, s.name, s.played_at, s.buy_in, s.status,
-              COUNT(se.id) AS player_count
-         FROM sessions s
-         LEFT JOIN session_entries se ON se.session_id = s.id
-        GROUP BY s.id
-        ORDER BY s.played_at DESC
-        LIMIT 8`
-    )
-    .all() as RecentSession[];
+  const recent = await query<RecentSession>`
+    SELECT s.id, s.name, s.played_at, s.buy_in, s.status,
+           COUNT(se.id)::int AS player_count
+      FROM sessions s
+      LEFT JOIN session_entries se ON se.session_id = s.id
+     GROUP BY s.id
+     ORDER BY s.played_at DESC
+     LIMIT 8
+  `;
 
   const balances: Balance[] = lifetime.map((p) => ({
     playerId: p.id,
     name: p.name,
-    net: p.net ?? 0,
+    net: Number(p.net) ?? 0,
   }));
   const transfers = settle(balances);
 
@@ -89,21 +85,21 @@ export default function Dashboard() {
                     <td className="px-4 py-2 font-medium">{p.name}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{p.sessions_played}</td>
                     <td className="px-4 py-2 text-right tabular-nums text-neutral-400">
-                      {money(p.total_buyin ?? 0)}
+                      {money(Number(p.total_buyin) ?? 0)}
                     </td>
                     <td className="px-4 py-2 text-right tabular-nums text-neutral-400">
-                      {money(p.total_cashout ?? 0)}
+                      {money(Number(p.total_cashout) ?? 0)}
                     </td>
                     <td
                       className={`px-4 py-2 text-right tabular-nums font-semibold ${
-                        (p.net ?? 0) > 0
+                        Number(p.net) > 0
                           ? "text-emerald-400"
-                          : (p.net ?? 0) < 0
+                          : Number(p.net) < 0
                           ? "text-rose-400"
                           : "text-neutral-400"
                       }`}
                     >
-                      {signedMoney(p.net ?? 0)}
+                      {signedMoney(Number(p.net) ?? 0)}
                     </td>
                   </tr>
                 ))}

@@ -9,7 +9,7 @@ export function signedMoney(n: number): string {
 }
 
 export function formatDate(iso: string): string {
-  const d = new Date(iso.replace(" ", "T") + "Z");
+  const d = new Date(iso);
   return d.toLocaleString(undefined, {
     year: "numeric",
     month: "short",

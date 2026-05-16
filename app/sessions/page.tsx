@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { db } from "@/lib/db";
+import { query } from "@/lib/db";
 import { money, formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -14,18 +14,16 @@ type Row = {
   total_pot: number | null;
 };
 
-export default function SessionsPage() {
-  const rows = db()
-    .prepare(
-      `SELECT s.id, s.name, s.played_at, s.buy_in, s.status,
-              COUNT(se.id) AS player_count,
-              COALESCE(SUM(se.buy_ins * s.buy_in), 0) AS total_pot
-         FROM sessions s
-         LEFT JOIN session_entries se ON se.session_id = s.id
-        GROUP BY s.id
-        ORDER BY s.played_at DESC`
-    )
-    .all() as Row[];
+export default async function SessionsPage() {
+  const rows = await query<Row>`
+    SELECT s.id, s.name, s.played_at, s.buy_in, s.status,
+           COUNT(se.id)::int AS player_count,
+           COALESCE(SUM(se.buy_ins * s.buy_in), 0) AS total_pot
+      FROM sessions s
+      LEFT JOIN session_entries se ON se.session_id = s.id
+     GROUP BY s.id
+     ORDER BY s.played_at DESC
+  `;
 
   return (
     <div className="space-y-6">
@@ -63,7 +61,7 @@ export default function SessionsPage() {
                     )}
                   </div>
                   <div className="text-xs text-neutral-400">
-                    {formatDate(s.played_at)} · {s.player_count} players · buy-in {money(s.buy_in)} · pot {money(s.total_pot ?? 0)}
+                    {formatDate(s.played_at)} · {s.player_count} players · buy-in {money(s.buy_in)} · pot {money(Number(s.total_pot) ?? 0)}
                   </div>
                 </div>
                 <span className="text-neutral-500">→</span>
